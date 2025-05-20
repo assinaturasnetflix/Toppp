@@ -39,7 +39,7 @@ app.use(cors({ // Permite requisições de qualquer origem
 app.use(express.json()); // Para parsear o corpo das requisições JSON
 
 // Servir arquivos estáticos do front-end da pasta 'public'
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
 
 
 // --- Definição dos Esquemas e Modelos Mongoose ---
