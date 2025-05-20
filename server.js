@@ -1692,7 +1692,107 @@ async function initializeDefaultData() {
         console.error("Erro ao inicializar dados padrão:", error);
     }
 }
+// DENTRO DA PARTE 4 DO SEU server.js, junto com outras rotas /api/admin
+// (Lembre-se que apiRouter foi definido antes)
 
+// GET /api/admin/notifications (Lista todas as notificações com paginação)
+apiRouter.get('/admin/notifications', protect, adminProtect, async (req, res) => {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || ITEMS_PER_PAGE_NOTIFICATIONS; // Use a constante do frontend ou defina uma no backend
+    // const userIdFilter = req.query.userId; // Para filtro futuro
+    // const typeFilter = req.query.type;   // Para filtro futuro
+
+    try {
+        let query = {};
+        // if (userIdFilter) query.user = userIdFilter;
+        // if (typeFilter && typeFilter !== 'all') query.type = typeFilter;
+
+        const totalNotifications = await Notification.countDocuments(query);
+        const notifications = await Notification.find(query)
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .populate('user', 'name email'); // Popula o usuário se a notificação for específica
+
+        res.json({
+            success: true,
+            notifications,
+            currentPage: page,
+            totalPages: Math.ceil(totalNotifications / limit),
+            totalNotifications
+        });
+    } catch (error) {
+        console.error("Admin - Erro ao buscar notificações:", error);
+        res.status(500).json({ success: false, message: "Erro ao buscar notificações." });
+    }
+});
+
+// POST /api/admin/notifications (Admin cria uma notificação)
+apiRouter.post('/admin/notifications', protect, adminProtect, async (req, res) => {
+    const {
+        title, message, fullMessage, type, displayType,
+        isGlobal, user: userId, // 'user' no corpo da req será o userId
+        actionUrl, actionText, expiresAt
+    } = req.body;
+
+    try {
+        if (!title || !message) {
+            return res.status(400).json({ success: false, message: "Título e mensagem são obrigatórios." });
+        }
+
+        const notificationData = {
+            title, message, fullMessage, type, displayType, isGlobal,
+            actionUrl, actionText, expiresAt
+        };
+
+        if (isGlobal === false || isGlobal === 'false') { // Checar string 'false' também
+            if (!userId) {
+                return res.status(400).json({ success: false, message: "ID do usuário é obrigatório para notificações não globais." });
+            }
+            // Valide se o userId existe (opcional, mas bom)
+            const targetUser = await User.findById(userId);
+            if (!targetUser) {
+                return res.status(404).json({ success: false, message: "Usuário alvo não encontrado." });
+            }
+            notificationData.user = userId;
+            notificationData.isGlobal = false;
+        } else {
+            notificationData.user = null;
+            notificationData.isGlobal = true;
+        }
+
+        const newNotification = new Notification(notificationData);
+        await newNotification.save();
+
+        // Chamar sua função utilitária createNotification NÃO é necessário aqui, pois já estamos criando e salvando.
+        // A menos que createNotification faça algo mais (como enviar WebSockets), que não parece ser o caso.
+
+        res.status(201).json({ success: true, message: "Notificação criada com sucesso.", notification: newNotification });
+
+    } catch (error) {
+        console.error("Admin - Erro ao criar notificação:", error);
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({ success: false, message: error.message });
+        }
+        res.status(500).json({ success: false, message: "Erro no servidor ao criar notificação." });
+    }
+});
+
+// DELETE /api/admin/notifications/:notificationId (Admin deleta uma notificação)
+apiRouter.delete('/admin/notifications/:notificationId', protect, adminProtect, async (req, res) => {
+    try {
+        const { notificationId } = req.params;
+        const notification = await Notification.findByIdAndDelete(notificationId);
+
+        if (!notification) {
+            return res.status(404).json({ success: false, message: "Notificação não encontrada." });
+        }
+        res.json({ success: true, message: "Notificação deletada com sucesso." });
+    } catch (error) {
+        console.error("Admin - Erro ao deletar notificação:", error);
+        res.status(500).json({ success: false, message: "Erro ao deletar notificação." });
+    }
+});
 
 // ---------- MIDDLEWARE DE ERRO GENÉRICO (OPCIONAL) ----------
 // Deve ser o último middleware
