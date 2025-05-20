@@ -996,15 +996,30 @@ apiRouter.get('/user/withdrawals/history', protect, async (req, res) => {
 });
 
 
+// ... (outras partes do seu server.js) ...
+
+// (Dentro de apiRouter ou app, dependendo de como você estruturou)
+
 // GET /api/user/referrals
-apiRouter.get('/user/referrals', protect, async (req, res) => {
+apiRouter.get('/user/referrals', protect, async (req, res) => { // Certifique-se que 'protect' está aqui
     const userId = req.user._id;
     try {
         const user = await User.findById(userId).select('referralCode balance bonusBalance firstDepositMade');
-        if (!user) return res.status(404).json({ success: false, message: "Usuário não encontrado." });
+        if (!user) {
+            return res.status(404).json({ success: false, message: "Usuário não encontrado." });
+        }
 
-        const serverBaseUrl = `${req.protocol}://${req.get('host')}`;
-        const referralLink = `${serverBaseUrl}/register.html?ref=${user.referralCode}`;
+        // ===== MODIFICAÇÃO AQUI =====
+        const frontendBaseUrl = process.env.FRONTEND_BASE_URL;
+        if (!frontendBaseUrl) {
+            console.warn("AVISO: FRONTEND_BASE_URL não está definido no .env. O link de referência pode não funcionar corretamente.");
+            // Você pode optar por um fallback ou retornar um erro se for crítico
+        }
+        // Assumindo que sua página de registro no frontend é 'register.html' na raiz
+        // Se for diferente, ajuste o caminho (ex: '/auth/register.html' ou apenas '/')
+        const referralLink = `${frontendBaseUrl || 'https://cripto-moz1.netlify.app'}/register.html?ref=${user.referralCode}`;
+        // Adicionei um fallback direto para sua URL caso process.env falhe por algum motivo no deploy inicial,
+        // mas o ideal é que process.env.FRONTEND_BASE_URL funcione.
 
         const referrals = await ReferralHistory.find({ referrer: userId })
             .populate('referredUser', 'name email createdAt isBlocked')
@@ -1017,7 +1032,6 @@ apiRouter.get('/user/referrals', protect, async (req, res) => {
             }
         });
 
-        // Saldo de bônus disponível para saque é o que está no user.bonusBalance E o user.firstDepositMade é true.
         const availableBonusForWithdrawal = user.firstDepositMade ? user.bonusBalance : 0;
 
         const formattedReferredUsers = referrals.map(r => {
@@ -1036,11 +1050,12 @@ apiRouter.get('/user/referrals', protect, async (req, res) => {
         });
 
         res.json({
-            success: true, referralLink,
+            success: true,
+            referralLink, // Agora com a URL base correta
             stats: {
                 totalReferred: referrals.length,
                 validReferred: referrals.filter(r => r.status === 'BonusAwardedToBonusBalance' || r.status === 'BonusReleasedToMainBalance').length,
-                totalBonus: totalBonusAwarded, // Total que já foi para bonusBalance ou mainBalance
+                totalBonus: totalBonusAwarded,
                 availableBonus: availableBonusForWithdrawal
             },
             referredUsers: formattedReferredUsers
@@ -1052,6 +1067,7 @@ apiRouter.get('/user/referrals', protect, async (req, res) => {
     }
 });
 
+// ... (resto do seu server.js) ...
 
 // GET /api/user/transactions
 apiRouter.get('/user/transactions', protect, async (req, res) => {
